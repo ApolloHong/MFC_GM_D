@@ -1,0 +1,72 @@
+# ==============================================================================
+# Generative Modeling via Mean-Field Control (Discrete Time)
+# Configuration File - Single Source of Truth
+# ==============================================================================
+# 
+# Algorithm: Iterative Backward Regression (Deep BSDE-style)
+# 
+# MFC Problem:
+#   min_α E[ Σ_{k=0}^{N-1} (1/2)|α_k|² Δt + λ * KL(P_{X_N} || μ_T) ]
+# 
+# where λ = terminal_weight is the coefficient for the KL divergence term.
+# 
+# Algorithm Steps:
+# 1. Forward Pass: Simulate particles X_0 -> X_N using current controls
+# 2. Terminal Condition: Gaussian Proxy for Y_N (scaled by λ)
+# 3. Backward Induction: Train Y_θ_k to regress E[Y_{k+1} | X_k]
+# ==============================================================================
+
+# -----------------------------------------------------------------------------
+# Physics Parameters (SDE dynamics)
+# -----------------------------------------------------------------------------
+physics:
+  T: 1.0              # Terminal time
+  N: 50               # Number of time steps
+  sigma: 1.0          # Diffusion coefficient
+  dim: 1              # State dimension
+
+# -----------------------------------------------------------------------------
+# Target Distribution (Gaussian)
+# -----------------------------------------------------------------------------
+target:
+  mean: 1.0           # Target mean μ
+  std: 1.0            # Target standard deviation σ
+
+# -----------------------------------------------------------------------------
+# Initial Distribution (Dirac at origin)
+# -----------------------------------------------------------------------------
+initial:
+  type: "dirac"       # Type: "dirac" or "gaussian"
+  mean: 0.0           # Initial mean (for dirac: point mass location)
+  std: 0.0            # Initial std (only for gaussian)
+
+# -----------------------------------------------------------------------------
+# Model Architecture (Time-Conditioned MLP)
+# -----------------------------------------------------------------------------
+model:
+  hidden_dim: 64              # Hidden layer dimension
+  n_layers: 3                 # Number of hidden layers
+  time_embedding_dim: 16      # Sinusoidal time embedding dimension
+  activation: "leaky_relu"    # Activation function
+
+# -----------------------------------------------------------------------------
+# Training Parameters
+# -----------------------------------------------------------------------------
+training:
+  iterations: 20              # Number of coupling iterations (outer loop)
+  backward_epochs: 100        # Epochs for each backward step (inner loop)
+  batch_size: 2048            # Number of particles
+  learning_rate: 0.001        # Adam optimizer learning rate
+  grad_clip: 1.0              # Gradient clipping threshold
+  print_every: 5              # Print frequency (iterations)
+  terminal_weight: 20.0       # lambda: Weight for KL(P_{X_N} || μ_T) in the cost
+
+# -----------------------------------------------------------------------------
+# Experiment Settings
+# -----------------------------------------------------------------------------
+experiment:
+  name: "mfc_backward_regression"  # Experiment name prefix
+  seed: 42                         # Random seed for reproducibility
+  save_plots: true                 # Save visualization plots
+  n_plot_trajectories: 100         # Number of trajectories to plot
+  n_eval_samples: 5000             # Samples for evaluation

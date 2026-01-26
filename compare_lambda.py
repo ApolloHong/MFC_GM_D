@@ -16,8 +16,8 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Import from main.py
-from main import DriftNetwork, MFCSimulator, train_mfc, device
+# Import from main.py (using new MFCConfig dataclass)
+from main import MFCConfig, DriftNetwork, MFCSimulator, train_mfc, device
 
 # Set random seeds
 torch.manual_seed(42)
@@ -35,16 +35,21 @@ def main():
     # λ values to compare
     lambda_values = [0.1, 1.0, 10.0, 100.0]
     
-    # Fixed parameters
-    T = 1.0
-    N = 50
-    sigma = 1.0
-    target_mean = 1.0
-    target_std = 1.0
-    state_dim = 1
-    n_epochs = 1000
-    batch_size = 1024
-    learning_rate = 1e-3
+    # Base configuration (shared parameters)
+    base_config = MFCConfig(
+        T=1.0,
+        N=50,
+        sigma=1.0,
+        target_mean=1.0,
+        target_std=1.0,
+        state_dim=1,
+        hidden_dims=[64, 64, 64],
+        n_epochs=1000,
+        batch_size=1024,
+        learning_rate=1e-3,
+        print_every=200,
+    )
+    
     n_samples = 5000
     
     # Store results
@@ -60,22 +65,31 @@ def main():
         torch.manual_seed(42)
         np.random.seed(42)
         
-        # Create model and simulator
-        drift_net = DriftNetwork(state_dim=state_dim, hidden_dims=[64, 64, 64]).to(device)
-        simulator = MFCSimulator(
-            T=T, N=N, sigma=sigma,
-            target_mean=target_mean, target_std=target_std,
-            state_dim=state_dim, terminal_weight=lam
+        # Create config with specific λ value
+        config = MFCConfig(
+            T=base_config.T,
+            N=base_config.N,
+            sigma=base_config.sigma,
+            target_mean=base_config.target_mean,
+            target_std=base_config.target_std,
+            state_dim=base_config.state_dim,
+            terminal_weight=lam,  # This is the only parameter that changes
+            hidden_dims=base_config.hidden_dims,
+            n_epochs=base_config.n_epochs,
+            batch_size=base_config.batch_size,
+            learning_rate=base_config.learning_rate,
+            print_every=base_config.print_every,
         )
+        
+        # Create model and simulator from config
+        drift_net = DriftNetwork(config).to(device)
+        simulator = MFCSimulator(config)
         
         # Train
         history = train_mfc(
             drift_net=drift_net,
             simulator=simulator,
-            n_epochs=n_epochs,
-            batch_size=batch_size,
-            lr=learning_rate,
-            print_every=200,
+            config=config,
         )
         
         # Generate trajectories for visualization
@@ -133,8 +147,8 @@ def main():
                         alpha=0.25, color='red', label='±2σ band')
         
         # Target mean line
-        ax.axhline(y=target_mean, color='green', linestyle='--', 
-                   linewidth=2, label=f'Target μ={target_mean}')
+        ax.axhline(y=base_config.target_mean, color='green', linestyle='--', 
+                   linewidth=2, label=f'Target μ={base_config.target_mean}')
         
         ax.set_xlabel('Time t', fontsize=11)
         ax.set_ylabel('$X_t$', fontsize=11)
@@ -142,7 +156,7 @@ def main():
                      fontsize=13, fontweight='bold')
         ax.legend(loc='upper left', fontsize=9)
         ax.grid(True, alpha=0.3)
-        ax.set_xlim(0, T)
+        ax.set_xlim(0, base_config.T)
         ax.set_ylim(-3, 4)
     
     fig1.suptitle(
@@ -170,8 +184,8 @@ def main():
     # Target PDF
     x_range = np.linspace(-3, 5, 300)
     pdf_target = (
-        1 / np.sqrt(2 * np.pi * target_std**2) * 
-        np.exp(-0.5 * (x_range - target_mean) ** 2 / target_std**2)
+        1 / np.sqrt(2 * np.pi * base_config.target_var) * 
+        np.exp(-0.5 * (x_range - base_config.target_mean) ** 2 / base_config.target_var)
     )
     
     for i, lam in enumerate(lambda_values):
@@ -187,7 +201,7 @@ def main():
         
         # Target PDF
         ax.plot(x_range, pdf_target, 'r-', linewidth=2.5, 
-                label=f'Target $\\mathcal{{N}}({target_mean}, {target_std**2})$')
+                label=f'Target $\\mathcal{{N}}({base_config.target_mean}, {base_config.target_var})$')
         
         ax.set_xlabel('$X_N$', fontsize=11)
         ax.set_ylabel('Density', fontsize=11)
@@ -220,7 +234,7 @@ def main():
     for lam in lambda_values:
         mean = results[lam]['mean']
         var = results[lam]['var']
-        print(f"{lam:^10g} | {mean:^10.4f} | {var:^10.4f} | {1.0:^12.4f} | {1.0:^10.4f}")
+        print(f"{lam:^10g} | {mean:^10.4f} | {var:^10.4f} | {base_config.target_mean:^12.4f} | {base_config.target_var:^10.4f}")
     print("=" * 70)
     print("\nAll figures saved!")
 
