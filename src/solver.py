@@ -10,7 +10,7 @@ Algorithm (with Polyak Averaging):
 2. Initialize N target networks (copy of trainable)
 3. Coupling Loop (iterations):
    a. Forward Pass: Simulate X using **TARGET** networks (stable policy)
-   b. Terminal Condition: Y_N = KernelScoreEstimator(X_N)
+   b. Terminal Condition: Y_N = ScoreEstimator(X_N) via DSM
    c. Backward Induction: Train **TRAINABLE** networks
    d. Soft Update: target = (1-τ)*target + τ*trainable  (τ=0.5)
 
@@ -31,11 +31,11 @@ from .dynamics import EulerMaruyama
 from .utils import (
     ExperimentManager, 
     GaussianProxy,
-    KernelScoreEstimator,
     plot_trajectories,
     plot_terminal_distribution,
     plot_statistics_evolution,
 )
+from .score_matching import ScoreEstimator
 
 
 class IterativeSolver:
@@ -96,16 +96,12 @@ class IterativeSolver:
             self.device
         )
         
-        # Terminal gradient estimator
-        save_dir = exp_manager.exp_dir if exp_manager else None
-        self.score_estimator = KernelScoreEstimator(
+        # Terminal gradient estimator (DSM-based)
+        self.score_estimator = ScoreEstimator(
             config.target.mean,
             config.target.std,
             self.device,
             terminal_weight=config.training.terminal_weight,
-            n_folds=5,
-            n_grid=15,
-            save_dir=save_dir,
         )
         
         # Experiment manager
@@ -166,7 +162,7 @@ class IterativeSolver:
     
     def compute_terminal_gradient(self, x_terminal: torch.Tensor) -> torch.Tensor:
         """
-        Compute Y_N using Kernel Score Estimator with numerical stability.
+        Compute Y_N using DSM Score Estimator.
         """
         return self.score_estimator.compute_terminal_gradient(
             x_terminal, 

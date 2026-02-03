@@ -103,7 +103,7 @@ def main(config_path: str = "config.yaml", config_obj: Config = None, show_plots
     # =========================================================================
     print("\n[3] Initializing iterative solver...")
     
-    solver = IterativeSolver(config, exp_manager)
+    solver = IterativeSolver(config, exp_manager, tau=config.training.tau)
     
     print(f"    Time horizon: T = {config.physics.T}")
     print(f"    Time steps: N = {config.physics.N}")

@@ -18,6 +18,7 @@ from .models import TimeConditionedMLP
 from .dynamics import EulerMaruyama
 from .solver import IterativeSolver
 from .utils import ExperimentManager, GaussianProxy, KernelScoreEstimator
+from .score_matching import ScoreEstimator, ScoreNet
 
 
 __all__ = [
@@ -31,9 +32,8 @@ __all__ = [
     "ExperimentManager",
     "GaussianProxy",
     "KernelScoreEstimator",
-    "SinkhornEstimator",
-    "MomentMatchingEstimator",
-    "MMDEstimator",
+    "ScoreEstimator",
+    "ScoreNet",
 ]
 
 __version__ = "1.0.0"

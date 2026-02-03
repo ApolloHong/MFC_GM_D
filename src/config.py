@@ -112,6 +112,7 @@ class TrainConfig:
     print_every: int = 5
     terminal_weight: float = 10.0  # λ: weight for KL(P_{X_N} || μ_T)
     y_clamp: float = 100.0  # Max value for terminal gradient
+    tau: float = 0.5  # Polyak averaging coefficient (0=no update, 1=full update)
 
 
 @dataclass
@@ -195,6 +196,7 @@ class Config:
             f"  Training:   {self.training.iterations} iterations × "
             f"{self.training.backward_epochs} epochs, "
             f"batch={self.training.batch_size}, lr={self.training.learning_rate}",
+            f"  Polyak τ:   {self.training.tau}",
             f"  λ (terminal_weight): {self.training.terminal_weight}",
             "=" * 70,
         ]

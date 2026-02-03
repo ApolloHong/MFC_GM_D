@@ -59,9 +59,7 @@ training:
   learning_rate: 0.001        # Adam optimizer learning rate
   grad_clip: 1.0              # Gradient clipping threshold
   print_every: 5              # Print frequency (iterations)
-  terminal_weight: 1.0       # lambda: Weight for KL(P_{X_N} || μ_T) in the cost
-  tau: 0.5                   # Polyak averaging coefficient (stabilizes oscillation)
-
+  terminal_weight: 2.0       # lambda: Weight for KL(P_{X_N} || μ_T) in the cost
 
 # -----------------------------------------------------------------------------
 # Experiment Settings
