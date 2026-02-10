@@ -112,7 +112,14 @@ class IterativeSolver:
             'iteration_losses': [],
             'terminal_means': [],
             'terminal_vars': [],
+            'y_means': [],
+            'y_stds': [],
+            'y_stds': [],
         }
+        
+        # Normalization statistics storage (one dict per time step)
+        # Will be populated during backward pass
+        self.norm_stats = [{} for _ in range(config.physics.N)]
         
         self._log(f"Initialized solver on device: {self.device}")
         self._log(f"Number of networks: {len(self.trainable_networks)}")
@@ -142,6 +149,15 @@ class IterativeSolver:
                     (1 - self.tau) * target_param.data + self.tau * train_param.data
                 )
     
+    def _normalize(self, x: torch.Tensor, mu: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+        """Normalize tensor: (x - mu) / (sigma + eps)."""
+        eps = 1e-8
+        return (x - mu) / (sigma + eps)
+    
+    def _denormalize(self, x_norm: torch.Tensor, mu: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
+        """Denormalize tensor: x_norm * sigma + mu."""
+        return x_norm * sigma + mu
+    
     def forward_pass_with_target(self, batch_size: int) -> torch.Tensor:
         """
         Perform forward simulation using TARGET networks (stable policy).
@@ -153,10 +169,12 @@ class IterativeSolver:
             trajectories: Tensor of shape (N+1, batch_size, dim)
         """
         # Use target networks for simulation (stable)
+        # Note: We don't use norm_stats here - networks are trained to output
+        # physical-scale Y values (denormalized after training)
         trajectories, _ = self.dynamics.simulate(
             self.target_networks, 
             batch_size, 
-            return_controls=False
+            return_controls=False,
         )
         return trajectories
     
@@ -177,9 +195,17 @@ class IterativeSolver:
         y_target: torch.Tensor,
         epochs: int,
         lr: float,
-    ) -> float:
+    ) -> Tuple[float, Dict]:
         """
         Train TRAINABLE network k to regress target Y values.
+        
+        Uses Dynamic Normalization for numerical stability:
+        - Network is trained to output PHYSICAL-SCALE Y (unnormalized)
+        - Loss is computed on NORMALIZED predictions/targets for stable gradients
+        
+        Returns:
+            loss: Final training loss (normalized)
+            stats: Dict with normalization statistics {mu_y, sigma_y}
         """
         network = self.trainable_networks[k]
         network.train()
@@ -189,12 +215,31 @@ class IterativeSolver:
         # Time value for this step
         t_k = self.dynamics.time_grid[k]
         
+        # =================================================================
+        # Compute normalization statistics for Y (for loss stability)
+        # =================================================================
+        mu_y = y_target.mean(dim=0, keepdim=True)
+        sigma_y = y_target.std(dim=0, keepdim=True)
+        eps = 1e-8
+        
+        # Normalize target Y for loss computation
+        y_target_norm = (y_target - mu_y) / (sigma_y + eps)
+        
+        # =================================================================
+        # Train network to output physical-scale Y, but compute loss on normalized
+        # =================================================================
         final_loss = 0.0
         for epoch in range(epochs):
             optimizer.zero_grad()
             
+            # Network outputs physical-scale Y (takes physical X as input)
             y_pred = network(t_k, x_k)
-            loss = torch.mean((y_pred - y_target) ** 2)
+            
+            # Normalize prediction using SAME stats as target
+            y_pred_norm = (y_pred - mu_y) / (sigma_y + eps)
+            
+            # Loss on normalized values (stable gradients)
+            loss = torch.mean((y_pred_norm - y_target_norm) ** 2)
             
             loss.backward()
             torch.nn.utils.clip_grad_norm_(
@@ -206,7 +251,14 @@ class IterativeSolver:
             final_loss = loss.item()
         
         network.eval()
-        return final_loss
+        
+        # Store stats for logging (not needed for inference since network outputs physical Y)
+        norm_stats = {
+            'mu_y': mu_y.detach(),
+            'sigma_y': sigma_y.detach(),
+        }
+        
+        return final_loss, norm_stats
     
     def run_iteration(self, iteration: int) -> Dict:
         """
@@ -238,19 +290,27 @@ class IterativeSolver:
         # Step C: Backward Induction (train TRAINABLE networks)
         # =====================================================================
         backward_losses = []
+        y_means_step = []
+        y_stds_step = []
         
         for k in range(N - 1, -1, -1):
             x_k = all_x[k].detach()
             y_target = y_current.detach()
             
-            # Train trainable network k
-            loss = self.backward_step(k, x_k, y_target, epochs, lr)
+            # Train trainable network k (with normalized loss for stability)
+            loss, norm_stats_k = self.backward_step(k, x_k, y_target, epochs, lr)
             backward_losses.append(loss)
             
-            # Update y_current using trainable network
+            # Store normalization stats for this time step (for logging)
+            self.norm_stats[k] = norm_stats_k
+            
+            # Update y_current using trainable network (direct physical-scale output)
             with torch.no_grad():
                 t_k = self.dynamics.time_grid[k]
                 y_current = self.trainable_networks[k](t_k, x_k)
+                
+                y_means_step.append(y_current.mean().item())
+                y_stds_step.append(y_current.std().item())
         
         # =====================================================================
         # Step D: Soft Update Target Networks
@@ -272,6 +332,9 @@ class IterativeSolver:
         dist_mean = abs(terminal_mean - target_mean)
         dist_std = abs(terminal_std - target_std)
         
+        average_y_mean = np.mean(y_means_step) if y_means_step else 0.0
+        average_y_std = np.mean(y_stds_step) if y_stds_step else 0.0
+        
         stats = {
             'iteration': iteration,
             'avg_backward_loss': avg_loss,
@@ -279,15 +342,21 @@ class IterativeSolver:
             'terminal_var': terminal_var,
             'dist_mean': dist_mean,
             'dist_std': dist_std,
+            'y_mean': average_y_mean,
+            'y_std': average_y_std,
         }
         
         # Record history
         self.history['iteration_losses'].append(avg_loss)
         self.history['terminal_means'].append(terminal_mean)
         self.history['terminal_vars'].append(terminal_var)
+        self.history['y_means'].append(average_y_mean)
+        self.history['y_stds'].append(average_y_std)
+        self.history['y_stds'].append(average_y_std)
         
         return stats
     
+
     def run(self, n_iterations: Optional[int] = None) -> Dict:
         """
         Run the full iterative training procedure.
@@ -295,6 +364,7 @@ class IterativeSolver:
         if n_iterations is None:
             n_iterations = self.config.training.iterations
         
+        # Initialize lambda if schedule is enabled
         self._log("=" * 70)
         self._log("Starting Iterative Backward Regression (Polyak Averaging)")
         self._log("=" * 70)
@@ -302,13 +372,15 @@ class IterativeSolver:
         self._log(f"Backward epochs per step: {self.config.training.backward_epochs}")
         self._log(f"Batch size: {self.config.training.batch_size}")
         self._log(f"Polyak τ: {self.tau}")
+        
+        self._log(f"Polyak τ: {self.tau}")
         self._log(f"λ (terminal_weight): {self.config.training.terminal_weight}")
+            
         self._log(f"Target: N({self.config.target.mean}, {self.config.target.var})")
         self._log("=" * 70)
         
         for i in range(1, n_iterations + 1):
             # Note: bandwidth is optimized once on first iteration, then reused
-            
             stats = self.run_iteration(i)
             
             # Log progress
@@ -317,7 +389,8 @@ class IterativeSolver:
                     f"Iter [{i:3d}/{n_iterations}] | "
                     f"Loss: {stats['avg_backward_loss']:.6f} | "
                     f"μ={stats['terminal_mean']:.3f} (Δ={stats['dist_mean']:.3f}), "
-                    f"σ={np.sqrt(stats['terminal_var']):.3f} (Δ={stats['dist_std']:.3f})"
+                    f"σ={np.sqrt(stats['terminal_var']):.3f} (Δ={stats['dist_std']:.3f}) | "
+                    f"Y_μ={stats['y_mean']:.3f}, Y_σ={stats['y_std']:.3f}"
                 )
         
         # Final evaluation using target networks
@@ -327,7 +400,7 @@ class IterativeSolver:
             final_trajectories, _ = self.dynamics.simulate(
                 self.target_networks,
                 self.config.experiment.n_eval_samples,
-                return_controls=False
+                return_controls=False,
             )
         final_terminal = final_trajectories[-1].cpu().numpy().flatten()
         final_mean = np.mean(final_terminal)
@@ -366,7 +439,7 @@ class IterativeSolver:
             trajectories, controls = self.dynamics.simulate(
                 self.target_networks,
                 self.config.experiment.n_eval_samples,
-                return_controls=True
+                return_controls=True,
             )
         
         trajectories_np = trajectories.cpu().numpy()

@@ -18,7 +18,7 @@ Author: Lizhan HONG
 
 import torch
 import torch.nn as nn
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 
 from .config import PhysicsConfig, InitialConfig
 
@@ -131,6 +131,7 @@ class EulerMaruyama:
         networks: List[nn.Module],
         batch_size: int,
         return_controls: bool = True,
+        norm_stats: Optional[List[Dict]] = None,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Simulate full trajectories X_0 -> X_N using current networks.
@@ -142,6 +143,8 @@ class EulerMaruyama:
             networks: List of N networks [Y_θ_0, ..., Y_θ_{N-1}]
             batch_size: Number of particles
             return_controls: Whether to return control values
+            norm_stats: Optional list of dicts with normalization stats per step.
+                        If provided, applies normalize->infer->denormalize.
             
         Returns:
             trajectories: Tensor of shape (N+1, batch_size, dim)
@@ -172,7 +175,16 @@ class EulerMaruyama:
             # Get control: α_k = -Y_θ_k(X_k)
             # Y represents gradient of terminal cost, so α = -Y to minimize cost
             with torch.no_grad():
-                y_k = networks[k](t_k, x)
+                if norm_stats is not None and len(norm_stats) > k and norm_stats[k]:
+                    # Use normalization: normalize x -> infer -> denormalize y
+                    stats = norm_stats[k]
+                    eps = 1e-8
+                    x_norm = (x - stats['mu_x']) / (stats['sigma_x'] + eps)
+                    y_norm = networks[k](t_k, x_norm)
+                    y_k = y_norm * stats['sigma_y'] + stats['mu_y']
+                else:
+                    # No normalization (fallback)
+                    y_k = networks[k](t_k, x)
             alpha_k = -y_k  # Negative of Y to push towards lower cost
             
             if return_controls:

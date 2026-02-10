@@ -87,6 +87,9 @@ class ModelConfig:
     activation: str = "leaky_relu"
 
 
+
+
+
 @dataclass
 class TrainConfig:
     """

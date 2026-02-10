@@ -53,16 +53,14 @@ model:
 # Training Parameters
 # -----------------------------------------------------------------------------
 training:
-  iterations: 20              # Number of coupling iterations (outer loop)
+  iterations: 100              # Number of coupling iterations (outer loop)
   backward_epochs: 100        # Epochs for each backward step (inner loop)
-  batch_size: 4096            # Number of particles
+  batch_size: 2048            # Number of particles
   learning_rate: 0.001        # Adam optimizer learning rate
   grad_clip: 1.0              # Gradient clipping threshold
   print_every: 5              # Print frequency (iterations)
-  terminal_weight: 10.0       # Initial λ (overridden by schedule if enabled)
-
+  terminal_weight: 100.0       # lambda: Weight for KL(P_{X_N} || μ_T) in the cost
   tau: 0.5                   # Polyak averaging coefficient (stabilizes oscillation)
-  y_clamp: 5.0             # Max absolute value for terminal gradient Y_N
 
 
 # -----------------------------------------------------------------------------

@@ -246,8 +246,20 @@ class ScoreEstimator:
         # Compute learned score
         generated_score = self.compute_score(x_terminal)
         
-        # Y_N = λ * [(x - μ_target)/σ²_target + score_learned]
+        # Terminal Condition / Adjoint State Calculation: Y_N
+        # Goal: Compute the gradient of the terminal cost functional J = λ * KL(ρ_N || μ_target)
+        # Analytical Formula: Y_N(x) = λ * ( ∇ log ρ_N(x) - ∇ log μ_target(x) )
+        # ==============================================================================
+        # [Term 1: Known Potential Gradient] 
+        # This represents the negative score of the target distribution: -∇ log μ_target(x).
+        # For a Gaussian target N(μ, σ²), the score is -(x - μ)/σ².
+        # Thus, this term becomes (x - μ)/σ², acting as a linear restoring force (confinement potential).
         target_term = self.target_precision * (x_terminal - self.target_mean)
+
+        # [Term 2: Total Terminal Gradient]
+        # Combine the Unknown Score (learned) and the Known Potential (analytic).
+        # Mathematical equivalent: Y_N = λ * ( Score_model(x) + Restoring_Force(x) )
+        # 'terminal_weight' corresponds to the penalty parameter 'l' in the paper.
         y_terminal = self.terminal_weight * (target_term + generated_score)
         
         # Debug logging BEFORE clamping
