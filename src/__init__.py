@@ -13,12 +13,12 @@ Modules:
     utils: Experiment management and utilities
 """
 
-from .config import Config, PhysicsConfig, ModelConfig, TrainConfig
+from .config import Config, PhysicsConfig, ModelConfig, TrainConfig, TargetScoreConfig
 from .models import TimeConditionedMLP
 from .dynamics import EulerMaruyama
 from .solver import IterativeSolver
 from .utils import ExperimentManager, GaussianProxy, KernelScoreEstimator
-from .score_matching import ScoreEstimator, ScoreNet
+from .score_matching import ScoreEstimator, ScoreNet, TargetScoreTrainer
 
 
 __all__ = [
@@ -26,6 +26,7 @@ __all__ = [
     "PhysicsConfig", 
     "ModelConfig",
     "TrainConfig",
+    "TargetScoreConfig",
     "TimeConditionedMLP",
     "EulerMaruyama",
     "IterativeSolver",
@@ -34,6 +35,7 @@ __all__ = [
     "KernelScoreEstimator",
     "ScoreEstimator",
     "ScoreNet",
+    "TargetScoreTrainer",
 ]
 
 __version__ = "1.0.0"

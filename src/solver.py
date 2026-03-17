@@ -35,7 +35,7 @@ from .utils import (
     plot_terminal_distribution,
     plot_statistics_evolution,
 )
-from .score_matching import ScoreEstimator
+from .score_matching import ScoreEstimator, TargetScoreTrainer
 
 
 class IterativeSolver:
@@ -73,6 +73,9 @@ class IterativeSolver:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.tau = tau
         
+        # Experiment manager (needed early for logging)
+        self.exp_manager = exp_manager
+        
         # Create TRAINABLE networks (will be trained)
         self.trainable_networks = create_networks(
             config.model, 
@@ -97,15 +100,22 @@ class IterativeSolver:
         )
         
         # Terminal gradient estimator (DSM-based)
+        # Pre-train target score network if mode is "learned"
+        target_score_trainer = None
+        if config.target_score.mode == "learned":
+            target_score_trainer = self._pretrain_target_score()
+        
         self.score_estimator = ScoreEstimator(
             config.target.mean,
             config.target.std,
             self.device,
             terminal_weight=config.training.terminal_weight,
+            target_score_mode=config.target_score.mode,
+            target_score_trainer=target_score_trainer,
         )
         
         # Experiment manager
-        self.exp_manager = exp_manager
+        # self.exp_manager = exp_manager (moved up)
         
         # Training history
         self.history = {
@@ -136,6 +146,46 @@ class IterativeSolver:
             self.exp_manager.log(message)
         else:
             print(message)
+    
+    def _pretrain_target_score(self) -> TargetScoreTrainer:
+        """
+        Pre-train the target score network ∇log ν(x) using DSM.
+        
+        Samples from the target distribution (currently Gaussian, but
+        can be extended to arbitrary sample sources) and trains once.
+        
+        Returns:
+            Trained TargetScoreTrainer instance
+        """
+        ts_cfg = self.config.target_score
+        dim = self.config.physics.dim
+        
+        self._log("Pre-training target score network (DSM)...")
+        self._log(f"  Mode: {ts_cfg.mode}")
+        self._log(f"  Steps: {ts_cfg.n_pretrain_steps}, LR: {ts_cfg.lr}")
+        self._log(f"  Samples: {ts_cfg.n_target_samples}, σ_dsm: {ts_cfg.sigma_dsm}")
+        
+        # Sample from target distribution
+        # TODO: For truly arbitrary targets, replace this with loading
+        #       external samples (e.g., from a dataset or GMM sampler)
+        target_samples = torch.randn(
+            ts_cfg.n_target_samples, dim, device=self.device
+        ) * self.config.target.std + self.config.target.mean
+        
+        # Create and train
+        trainer = TargetScoreTrainer(
+            dim=dim,
+            device=self.device,
+            hidden_dim=ts_cfg.hidden_dim,
+            n_pretrain_steps=ts_cfg.n_pretrain_steps,
+            lr=ts_cfg.lr,
+            sigma_dsm=ts_cfg.sigma_dsm,
+        )
+        final_loss = trainer.train(target_samples, verbose=True)
+        
+        self._log(f"Target score pre-training complete. Final loss: {final_loss:.6f}")
+        
+        return trainer
     
     def _soft_update(self):
         """

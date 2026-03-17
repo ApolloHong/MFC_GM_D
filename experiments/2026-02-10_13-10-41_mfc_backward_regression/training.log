@@ -1,0 +1,39 @@
+Experiment: 2026-02-10_13-10-41_mfc_backward_regression
+Started: 2026-02-10T13:10:41.666030
+======================================================================
+
+======================================================================
+MFC Configuration (Iterative Backward Regression)
+======================================================================
+  Physics:    T=1.0, N=50, σ=1.0, dim=1
+  Target:     N(1.0, 1.0)
+  Target Score: mode=learned
+  Initial:    dirac at 0.0
+----------------------------------------------------------------------
+  Model:      hidden=64, layers=3, time_emb=16
+  Training:   100 iterations × 100 epochs, batch=4096, lr=0.001
+  Polyak τ:   0.5
+  λ (terminal_weight): 2.0
+======================================================================
+
+[13:10:41] Pre-training target score network (DSM)...
+[13:10:41]   Mode: learned
+[13:10:41]   Steps: 5000, LR: 0.001
+[13:10:41]   Samples: 10000, σ_dsm: 0.05
+[13:11:03] Target score pre-training complete. Final loss: 1.017717
+[13:11:03] Initialized solver on device: cpu
+[13:11:03] Number of networks: 50
+[13:11:03] Polyak averaging τ: 0.5
+[13:11:03] Total parameters (trainable): 428,850
+[13:11:03] ======================================================================
+[13:11:03] Starting Iterative Backward Regression (Polyak Averaging)
+[13:11:03] ======================================================================
+[13:11:03] Iterations: 100
+[13:11:03] Backward epochs per step: 100
+[13:11:03] Batch size: 4096
+[13:11:03] Polyak τ: 0.5
+[13:11:03] Polyak τ: 0.5
+[13:11:03] λ (terminal_weight): 2.0
+[13:11:03] Target: N(1.0, 1.0)
+[13:11:03] ======================================================================
+[13:11:12] Iter [  1/100] | Loss: 0.173136 | μ=0.041 (Δ=0.959), σ=0.966 (Δ=0.034) | Y_μ=-1.833, Y_σ=0.087

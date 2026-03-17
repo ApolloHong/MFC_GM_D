@@ -56,6 +56,30 @@ class TargetConfig:
 
 
 @dataclass
+class TargetScoreConfig:
+    """
+    Configuration for the target score network ∇log ν(x).
+    
+    Controls whether the target score is computed analytically (Gaussian)
+    or learned via DSM from target samples.
+    
+    Attributes:
+        mode: "analytical" (Gaussian formula) or "learned" (DSM network)
+        hidden_dim: Hidden layer dimension for ScoreNet
+        n_pretrain_steps: Number of DSM training steps
+        lr: Learning rate for Adam optimizer
+        sigma_dsm: Smoothing noise std for DSM
+        n_target_samples: Number of target samples for pre-training
+    """
+    mode: str = "analytical"
+    hidden_dim: int = 128
+    n_pretrain_steps: int = 2000
+    lr: float = 0.001
+    sigma_dsm: float = 0.1
+    n_target_samples: int = 10000
+
+
+@dataclass
 class InitialConfig:
     """
     Initial distribution parameters.
@@ -147,6 +171,7 @@ class Config:
     """
     physics: PhysicsConfig = field(default_factory=PhysicsConfig)
     target: TargetConfig = field(default_factory=TargetConfig)
+    target_score: TargetScoreConfig = field(default_factory=TargetScoreConfig)
     initial: InitialConfig = field(default_factory=InitialConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     training: TrainConfig = field(default_factory=TrainConfig)
@@ -169,6 +194,7 @@ class Config:
         # Parse each section
         physics = PhysicsConfig(**data.get('physics', {}))
         target = TargetConfig(**data.get('target', {}))
+        target_score = TargetScoreConfig(**data.get('target_score', {}))
         initial = InitialConfig(**data.get('initial', {}))
         model = ModelConfig(**data.get('model', {}))
         training = TrainConfig(**data.get('training', {}))
@@ -177,6 +203,7 @@ class Config:
         return cls(
             physics=physics,
             target=target,
+            target_score=target_score,
             initial=initial,
             model=model,
             training=training,
@@ -192,6 +219,7 @@ class Config:
             f"  Physics:    T={self.physics.T}, N={self.physics.N}, "
             f"σ={self.physics.sigma}, dim={self.physics.dim}",
             f"  Target:     N({self.target.mean}, {self.target.var})",
+            f"  Target Score: mode={self.target_score.mode}",
             f"  Initial:    {self.initial.type} at {self.initial.mean}",
             "-" * 70,
             f"  Model:      hidden={self.model.hidden_dim}, "

@@ -73,7 +73,7 @@ training:
   learning_rate: 0.001        # Adam optimizer learning rate
   grad_clip: 1.0              # Gradient clipping threshold
   print_every: 5              # Print frequency (iterations)
-  terminal_weight: 0.0        # Initial λ (overridden by schedule if enabled)
+  terminal_weight: 2.0        # Initial λ (overridden by schedule if enabled)
 
   tau: 0.5                   # Polyak averaging coefficient (stabilizes oscillation)
   y_clamp: 5.0             # Max absolute value for terminal gradient Y_N
